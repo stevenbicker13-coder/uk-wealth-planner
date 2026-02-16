@@ -12,6 +12,7 @@ from core.cashflow import (
     amortisation_schedule,
 )
 from core.investing import RISK_PROFILES, ETF_SUGGESTIONS, projection_yearly
+from core.tax import estimate_tax
 
 
 st.set_page_config(page_title="UK Wealth Planner", layout="wide")
@@ -179,6 +180,14 @@ with st.sidebar:
             cost = st.number_input(f"Cost/day (£) — child {i+1}", 0.0, 500.0, 70.0, 5.0, key=f"cost_{i}")
             childcare_children.append(ChildCareChild(age_years=age, days_per_week=days, hours_per_day=hrs, cost_per_day=cost))
 
+    child_benefit_received_annual = st.number_input(
+        "Child Benefit received (£/year)",
+        min_value=0.0,
+        value=0.0,
+        step=100.0,
+        help="Optional. Used to estimate the High Income Child Benefit Charge (HICBC).",
+    )
+
     st.divider()
     st.header("Scenarios")
 
@@ -253,6 +262,26 @@ savings_interest_annual = savings_balance * (savings_interest_pct / 100.0)
 other_income_annual = savings_interest_annual + dividends_annual + rental_net_annual
 
 # ---------------------------
+# Tax engine (annual) -> net monthly income
+# ---------------------------
+tax_nation = "Scotland" if is_scotland else "England/Wales/Northern Ireland"
+household_employment_income = you_gross + (partner_gross if has_partner else 0.0)
+household_employee_pension = you_emp_pension_used + (partner_emp_pension_used if has_partner else 0.0)
+
+tax = estimate_tax(
+    nation=tax_nation,
+    employment_income=household_employment_income,
+    pension_employee=household_employee_pension,
+    savings_interest=savings_interest_annual,
+    dividends=dividends_annual,
+    rental_income=rental_net_annual,
+    child_benefit_received=child_benefit_received_annual,
+    highest_parent_adjusted_net_for_hicbc=highest_adj_proxy,
+)
+
+monthly_income_base = max(0.0, tax.net_income) / 12.0
+
+# ---------------------------
 # Budget / emergency / goals
 # ---------------------------
 holiday_sinking_monthly = (holiday_cost_each * holidays_per_year) / 12.0
@@ -286,9 +315,6 @@ expenses_monthly = (
 )
 
 goals_monthly = holiday_sinking_monthly + em["per_month"] + invest_monthly
-
-# Net proxy income (tax engine will be added later without changing UI much)
-monthly_income_base = max(0.0, (you_gross - you_emp_pension_used) + (partner_gross - partner_emp_pension_used) + other_income_annual) / 12.0
 
 # For cashflow timing: pass the lumpy amounts:
 you_cash_bonus_amt = you_bonus_amount if you_bonus_mode == "Quarterly" else you_bonus_annual
@@ -334,9 +360,25 @@ with left:
     avg_monthly_surplus = avg_monthly_income - avg_monthly_outgoings
 
     k1, k2, k3 = st.columns(3)
-    k1.metric("Avg monthly income", f"£{avg_monthly_income:,.0f}")
+    k1.metric("Avg monthly net income", f"£{avg_monthly_income:,.0f}")
     k2.metric("Avg monthly outgoings", f"£{avg_monthly_outgoings:,.0f}")
     k3.metric("Avg monthly surplus", f"£{avg_monthly_surplus:,.0f}")
+
+    st.divider()
+    st.subheader("Tax estimate (annual)")
+
+    t1, t2, t3 = st.columns(3)
+    t1.metric("Gross income", f"£{tax.gross_income:,.0f}")
+    t2.metric("Total tax", f"£{tax.total_tax:,.0f}")
+    t3.metric("Net income", f"£{tax.net_income:,.0f}")
+
+    with st.expander("Show tax breakdown"):
+        st.write(f"Personal allowance: £{tax.personal_allowance:,.0f}")
+        st.write(f"Income tax: £{tax.income_tax:,.0f}")
+        st.write(f"Employee NI: £{tax.employee_ni:,.0f}")
+        st.write(f"Dividend tax: £{tax.dividend_tax:,.0f}")
+        st.write(f"Savings tax: £{tax.savings_tax:,.0f}")
+        st.write(f"HICBC: £{tax.hicbc:,.0f}")
 
     st.divider()
     st.subheader("Emergency fund (corrected)")
