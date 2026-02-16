@@ -394,12 +394,13 @@ with st.sidebar:
     default_debts = pd.DataFrame([
         {"name": "Car finance", "balance": 8000.0, "apr_pct": 9.9, "monthly_payment": 250.0, "end_date": ""},
     ])
-    debts_df = st.data_editor(
-        default_debts,
-        num_rows="dynamic",
-        use_container_width=True,
-        help="Enter each debt. If end_date is provided (YYYY-MM-DD), we use it to estimate months remaining."
-    )
+    
+   st.caption("Enter each debt. If end_date is provided (YYYY-MM-DD), we use it to estimate months remaining.")
+debts_df = st.data_editor(
+    default_debts,
+    num_rows="dynamic",
+    use_container_width=True,
+)
 
     st.divider()
     st.header("Spending (monthly)")
